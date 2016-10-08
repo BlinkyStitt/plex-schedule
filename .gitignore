@@ -1,1 +1,3 @@
-*.egg-info/*.pyc.pyenv/
+*.egg-info/
+*.pyc
+.pyenv/

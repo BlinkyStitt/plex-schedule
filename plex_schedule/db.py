@@ -11,6 +11,7 @@ Groundhog Day (every leap day)
 
 """
 import datetime
+import functools
 import logging
 
 from sqlalchemy import (
@@ -194,6 +195,7 @@ class MarkSeriesUnwatchedDailyAction(MarkUnwatchedAction):
         else:
             return "{} #{}".format(self.name, self.episode_num)
 
+    @functools.lru_cache()
     def get_series_episodes(self, plex_server):
         library = self.get_library(plex_server)
 

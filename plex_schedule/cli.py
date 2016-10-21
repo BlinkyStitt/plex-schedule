@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 )
 @click.pass_context
 def cli(ctx, home):
-    # todo: setup varying logger verbosity levels
+    # TODO: setup varying logger verbosity levels
     logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
     # make the third party loggers quieter
@@ -45,7 +45,7 @@ def cli(ctx, home):
         log.info("Creating database: %s", schedule_db)
         db.Base.metadata.create_all(schedule_db)
 
-        # todo: do bootstrapping of the database properly. maybe with a simple flat file format
+        # TODO: do bootstrapping of the database properly. maybe with a simple flat file format
         db_session.add(
             db.MarkUnwatchedAnuallyAction(
                 name='Independence Day',
@@ -79,9 +79,11 @@ def cli(ctx, home):
 @click.option('--server', prompt=True)
 @click.pass_context
 def bootstrap(ctx):
+    raise NotImplementedError('this is just pseudocode and comments right now')
+
     config_dict = {}
 
-    # todo: prompt for token or user and password
+    # TODO: prompt for token or user and password
     token = user = password = None
     if user and password:
         log.info("Connecting to MyPlex as %s...", user)
@@ -94,10 +96,8 @@ def bootstrap(ctx):
 
     config_dict['token'] = token
 
-    # todo: write config dict
-    # todo: set mode on the config
-
-    click.echo(yaml.dumps(config_dict))
+    # TODO: write config dict to $home/config.yml with a safe mode since it has credentials in it
+    yaml
 
 
 @cli.command()
@@ -108,12 +108,12 @@ def cron(ctx, server):
 
     db_session = ctx.obj
 
-    # todo: attempt to migrate the database
+    # TODO: attempt to migrate the database
 
-    # todo: do simple yaml config instead
+    # TODO: do simple yaml config instead
     netrc_key = 'plex_schedule'
     if server:
-        # todo: loop over all the servers if not server
+        # TODO: loop over all the servers if not server
         netrc_key += '_' + server
     user, _, password = netrc.netrc().authenticators(netrc_key)
 
@@ -128,16 +128,16 @@ def cron(ctx, server):
     if not actions:
         log.info("No actions due")
 
-        # todo: how should we handle movies?
+        # TODO: how should we handle movies?
         #       maybe automatically queue stuff for download if nothing to watch?
 
-        currently_unwatched_show_hours = 0  # todo: actually do this
+        currently_unwatched_show_hours = 0  # TODO: actually do this
         if currently_unwatched_show_hours > 5:
             log.info("There are enough shows already unwatched. Exiting")
             return
 
         log.info("Checking for future actions...")
-        # todo: what should the limit on this be?
+        # TODO: what should the limit on this be?
         actions += db_session.query(db.MarkSeriesUnwatchedDailyAction) \
             .filter_by(completed=False) \
             .order_by(db.MarkSeriesUnwatchedDailyAction.date) \
@@ -151,13 +151,13 @@ def cron(ctx, server):
     log.info("Found %d action(s) to process!", len(actions))
     log.debug("actions: %s", actions)
 
-    # todo: use the token instead
+    # TODO: use the token instead
     log.info("Connecting to MyPlex as %s...", user)
     account = myplex.MyPlexAccount.signin(user, password)
     log.debug("account.email: %s", account.email)
 
     log.info("Connecting to %s as %s...", server, account.username)
-    # todo: can we check the local IPs first?
+    # TODO: can we check the local IPs first?
     plex_server = account.resource(server).connect()
     log.debug("plex_server: %s", plex_server)
 
@@ -177,7 +177,7 @@ def cron(ctx, server):
             log.info("Saving...")
             db_session.commit()
 
-    # todo: only do this if in debug mode
+    # TODO: only do this if in debug mode
     # log.info("interactive time!")
     # import ipdb; ipdb.set_trace()  # noqa
 
@@ -194,7 +194,7 @@ def shell(ctx, server):
     raise NotImplemented("Open an interactive shell with the server ready")
 
 """
-todo:
+TODO:
     select a series and offset it from today or from some arbitrary day
     select a movie and mark it unwatched every year around a given date (independence day always a week before july 4)
     mark any tv that aired or movie that released X years ago as unwatched if they weren't watched recently

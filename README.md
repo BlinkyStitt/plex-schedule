@@ -69,6 +69,7 @@ docker build -t bwstitt/plex_schedule
  - [ ] command for setting up crontab
  - [ ] use pip-sync instead of pip install
  - [ ] make sure specials get sorted into a series by air date instead of being a special season at the end
+ - [ ] how should multiple server support actually work? would it be better to just support easily moving from one server to another rather than updating multiple servers with one run? Probably since multiple runs can easily be setup with seperate configs
 
 
 # Authors

@@ -42,37 +42,9 @@ def cli(ctx, home):
     ctx.obj = db_session = db.Session()  # do this after calling get_db since get_db configures Session
 
     if not os.path.exists(db_path):
+        # todo: this really all belongs in bootstrap, but i'm not sure how best to not duplicate the get_db call
         log.info("Creating database: %s", schedule_db)
         db.Base.metadata.create_all(schedule_db)
-
-        # TODO: do bootstrapping of the database properly. maybe with a simple flat file format
-        db_session.add(
-            db.MarkUnwatchedAnuallyAction(
-                name='Independence Day',
-                date=datetime.date(year=2016, month=6, day=30),  # a few days before July 1
-                section=db.DEFAULT_MOVIE_SECTION,
-                every_x_years=1,
-            )
-        )
-        db_session.add(
-            db.MarkUnwatchedAnuallyAction(
-                name='V for Vendetta',
-                date=datetime.date(year=2016, month=11, day=1),  # a few days before Nov 5
-                section=db.DEFAULT_MOVIE_SECTION,
-                every_x_years=2,
-            )
-        )
-
-        db_session.add(
-            db.MarkSeriesUnwatchedDailyAction(
-                name='Plebs',
-                date=datetime.date.today(),
-                section=db.DEFAULT_SHOW_SECTION,
-                every_x_days=7,
-            )
-        )
-
-        db_session.commit()
 
 
 @cli.command()
@@ -80,6 +52,35 @@ def cli(ctx, home):
 @click.pass_context
 def bootstrap(ctx):
     raise NotImplementedError('this is just pseudocode and comments right now')
+
+    # TODO: do bootstrapping of the database properly. maybe with a simple flat file format
+    db_session.add(
+        db.MarkUnwatchedAnuallyAction(
+            name='Independence Day',
+            date=datetime.date(year=2016, month=6, day=30),  # a few days before July 1
+            section=db.DEFAULT_MOVIE_SECTION,
+            every_x_years=1,
+        )
+    )
+    db_session.add(
+        db.MarkUnwatchedAnuallyAction(
+            name='V for Vendetta',
+            date=datetime.date(year=2016, month=11, day=1),  # a few days before Nov 5
+            section=db.DEFAULT_MOVIE_SECTION,
+            every_x_years=2,
+        )
+    )
+
+    db_session.add(
+        db.MarkSeriesUnwatchedDailyAction(
+            name='Plebs',
+            date=datetime.date.today(),
+            section=db.DEFAULT_SHOW_SECTION,
+            every_x_days=7,
+        )
+    )
+
+    db_session.commit()
 
     config_dict = {}
 

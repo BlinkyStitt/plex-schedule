@@ -6,6 +6,7 @@ import sys
 
 from plexapi import myplex
 import click
+import yaml
 
 from plex_schedule import db
 
@@ -16,7 +17,7 @@ log = logging.getLogger(__name__)
 @click.group()
 @click.option(
     "--home",
-    default=lambda: os.environ.get('PLEX_SCHEDULER_HOME', os.path.expanduser('~/.plex_schedule')),
+    default=lambda: os.environ.get('PLEX_SCHEDULE_HOME', os.path.expanduser('~/.plex_schedule')),
     type=click.Path(resolve_path=True),
 )
 @click.pass_context
@@ -31,8 +32,9 @@ def cli(ctx, home):
     if not os.path.exists(home):
         log.debug("Creating plex_schedule directory: %s", home)
         os.makedirs(home)
+        os.chmod(home, 0700)
 
-    # todo: set the mode on home
+    os.environ['PLEX_SCHEDULE_HOME'] = home
 
     db_path = os.path.join(home, 'plex_schedule.db')
     schedule_db = db.get_db('sqlite:///%s' % db_path)
@@ -76,12 +78,44 @@ def cli(ctx, home):
 @cli.command()
 @click.option('--server', prompt=True)
 @click.pass_context
+def bootstrap(ctx):
+    config_dict = {}
+
+    # todo: prompt for token or user and password
+    token = user = password = None
+    if user and password:
+        log.info("Connecting to MyPlex as %s...", user)
+        account = myplex.MyPlexAccount.signin(user, password)
+        log.debug("account.email: %s", account.email)
+
+        config_dict['plex_email'] = account.email
+
+        token = NotImplemented
+
+    config_dict['token'] = token
+
+    # todo: write config dict
+    # todo: set mode on the config
+
+    click.echo(yaml.dumps(config_dict))
+
+
+@cli.command()
+@click.option('--server')
+@click.pass_context
 def cron(ctx, server):
     log.debug("hello, cron!")
 
     db_session = ctx.obj
 
-    user, _, password = netrc.netrc().authenticators('plex_scheduler_' + server)
+    # todo: attempt to migrate the database
+
+    # todo: do simple yaml config instead
+    netrc_key = 'plex_schedule'
+    if server:
+        # todo: loop over all the servers if not server
+        netrc_key += '_' + server
+    user, _, password = netrc.netrc().authenticators(netrc_key)
 
     actions = []
 
@@ -117,11 +151,10 @@ def cron(ctx, server):
     log.info("Found %d action(s) to process!", len(actions))
     log.debug("actions: %s", actions)
 
+    # todo: use the token instead
     log.info("Connecting to MyPlex as %s...", user)
     account = myplex.MyPlexAccount.signin(user, password)
     log.debug("account.email: %s", account.email)
-
-    # todo: store account.token in a secure place and use that in the future
 
     log.info("Connecting to %s as %s...", server, account.username)
     # todo: can we check the local IPs first?
@@ -154,7 +187,7 @@ def cron(ctx, server):
 @cli.command()
 @click.option('--server', default=None)
 @click.pass_context
-def shell(ctx):
+def shell(ctx, server):
     plex_server = NotImplemented
 
     log.info(plex_server)

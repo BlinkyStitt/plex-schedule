@@ -9,7 +9,7 @@ setuptools.setup(
     long_description=__doc__,
     entry_points={
         'console_scripts': [
-            'plex_schedule = plex_schedule.cli:cli',
+            'plex-schedule = plex_schedule.cli:cli',
         ],
     },
     install_requires=[
@@ -17,6 +17,7 @@ setuptools.setup(
         'ipdb',
         'plexapi',
         'sqlalchemy',
+        'PyYAML',
     ],  # keep this in sync with requirements.in
     name='plex_schedule',
     packages=setuptools.find_packages(),

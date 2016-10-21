@@ -1,4 +1,22 @@
-Plex Schedule
+# Plex Schedule
+
+Automatically mark shows unwatched on a schedule.
+
+**IMPORTANT!** This is not yet ready for use. The basics work, but there is a lot left. Some of the commands in the README are more aspirational than anything right now and do not yet work.
+
+I wrote this to fix a few problems:
+
+1. I always want to watch some movies every year and don't want to have to search for them
+2. It is too easy to binge watch television. Sometimes it can be fun but in general I'd rather spread out my telivison watching and do other things.
+3. I don't want to have to choose between a large selection of media; I only really want 2 to 4 choices of what to watch at a time. If I don't like any of my choices, maybe I shouldn't be watching TV or maybe I should skip the shows entirely and go do something else.
+4. When I come back from vacation I don't want too many unwatched shows piled up.
+
+You tell this tool what movies you want to watch anually and what shows you want to have marked watched when you have less than a configurable number of hours (4 by default) of unwatched shows in plex.
+
+For example with movies, you might want to watch Independence Day every 4th of July or "Groundhog Day" every leap year.
+
+For example with shows, instead of marking an entire series unwatched, you tell this tool to add it to its schedule. It will then mark the first episode of the series unwatched. It will not mark the next episode in the series unwatched until you've watched that first epise and at least a configurable number of days (1 by default) has passed.
+
 
 # Quick Setup with Docker
 
@@ -50,6 +68,7 @@ docker build -t bwstitt/plex_schedule
  - [ ] upgrade requirements by using pip-tools inside docker
  - [ ] command for setting up crontab
  - [ ] use pip-sync instead of pip install
+ - [ ] make sure specials get sorted into a series by air date instead of being a special season at the end
 
 
 # Authors

@@ -24,8 +24,8 @@ For example with shows, instead of marking an entire series unwatched, you tell 
 
 2. Run the following commands in your terminal:
 ```bash
-docker run -v ./data:/data --rm bwstitt/plex_schedule bootstrap
-docker run -v ./data:/data --rm bwstitt/plex_schedule cron
+docker run -v plex_schedule_data:/data --rm -it bwstitt/plex_schedule bootstrap --with-example-db
+docker run -v plex_schedule_data:/data --rm bwstitt/plex_schedule cron
 ```
 
 3. Then add that last cron command to your crontab

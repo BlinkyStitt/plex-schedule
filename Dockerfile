@@ -23,7 +23,10 @@ RUN . ~/pyenv/bin/activate \
 COPY . /home/plex_schedule/src/plex_schedule
 # todo: i wish copy would keep the user...
 USER root
-RUN chown -R plex_schedule:nogroup /home/plex_schedule/src
+RUN mkdir /data \
+ && chown -R plex_schedule:nogroup \
+    /data \
+    /home/plex_schedule/src
 
 ENV PLEX_SCHEDULE_HOME=/data
 
@@ -33,11 +36,9 @@ WORKDIR /home/plex_schedule/src/plex_schedule
 RUN . ~/pyenv/bin/activate \
  && pip install --no-cache-dir -r requirements.txt -e . \
  && plex-schedule --help \
- && mkdir -p ~/.plex_schedule
 
 # setup volume for the config and database
-VOLUME ["/home/plex_schedule/.plex_schedule"]
+VOLUME ["/data"]
 
-# todo: this is acting weird. when i do run it wont see any args and just always prints the help text...
-ENTRYPOINT /home/plex_schedule/pyenv/bin/plex-schedule
+ENTRYPOINT ["/home/plex_schedule/pyenv/bin/plex-schedule"]
 CMD ["--help"]

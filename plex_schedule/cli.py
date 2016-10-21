@@ -32,73 +32,94 @@ def cli(ctx, home):
     if not os.path.exists(home):
         log.debug("Creating plex_schedule directory: %s", home)
         os.makedirs(home)
-        os.chmod(home, 0700)
+        os.chmod(home, 0o700)
 
     os.environ['PLEX_SCHEDULE_HOME'] = home
 
     db_path = os.path.join(home, 'plex_schedule.db')
     schedule_db = db.get_db('sqlite:///%s' % db_path)
 
-    ctx.obj = db_session = db.Session()  # do this after calling get_db since get_db configures Session
+    # TODO: fail if database does not exist and we aren't bootstrapping?
 
-    if not os.path.exists(db_path):
-        # todo: this really all belongs in bootstrap, but i'm not sure how best to not duplicate the get_db call
-        log.info("Creating database: %s", schedule_db)
-        db.Base.metadata.create_all(schedule_db)
+    ctx.obj = dict(
+        db_session=db.Session(),  # do this after calling get_db since get_db configures Session
+        schedule_db=schedule_db,
+        home=home,
+    )
 
 
 @cli.command()
-@click.option('--server', prompt=True)
+@click.option('--plex-server', prompt=True)
+@click.option('--plex-username', prompt=True)
+@click.option('--with-example-db', is_flag=True, default=False)
+@click.password_option()
 @click.pass_context
-def bootstrap(ctx):
-    raise NotImplementedError('this is just pseudocode and comments right now')
+def bootstrap(
+    ctx,
+    password,
+    plex_server,
+    plex_username,
+    with_example_db,
+):
+    # TODO: alert if overwriting existing config/database
 
-    # TODO: do bootstrapping of the database properly. maybe with a simple flat file format
-    db_session.add(
-        db.MarkUnwatchedAnuallyAction(
-            name='Independence Day',
-            date=datetime.date(year=2016, month=6, day=30),  # a few days before July 1
-            section=db.DEFAULT_MOVIE_SECTION,
-            every_x_years=1,
-        )
-    )
-    db_session.add(
-        db.MarkUnwatchedAnuallyAction(
-            name='V for Vendetta',
-            date=datetime.date(year=2016, month=11, day=1),  # a few days before Nov 5
-            section=db.DEFAULT_MOVIE_SECTION,
-            every_x_years=2,
-        )
-    )
+    db_session = ctx.obj['db_session']
+    home = ctx.obj['home']
+    schedule_db = ctx.obj['schedule_db']
 
-    db_session.add(
-        db.MarkSeriesUnwatchedDailyAction(
-            name='Plebs',
-            date=datetime.date.today(),
-            section=db.DEFAULT_SHOW_SECTION,
-            every_x_days=7,
-        )
-    )
+    db_path = os.path.join(home, 'plex_schedule.db')
+    if not os.path.exists(db_path):
+        log.info("Creating database: %s", schedule_db)
+        db.Base.metadata.create_all(schedule_db)
 
-    db_session.commit()
+    config_dict = {
+        'plex_server': plex_server,
+        'plex_user': plex_username,
+    }
 
-    config_dict = {}
+    log.info("Connecting to MyPlex as %s...", plex_username)
+    account = myplex.MyPlexAccount.signin(plex_username, password)
+    log.debug("account.email: %s", account.email)
 
-    # TODO: prompt for token or user and password
-    token = user = password = None
-    if user and password:
-        log.info("Connecting to MyPlex as %s...", user)
-        account = myplex.MyPlexAccount.signin(user, password)
-        log.debug("account.email: %s", account.email)
+    config_dict['plex_email'] = account.email
+    config_dict['token'] = account.authenticationToken
 
-        config_dict['plex_email'] = account.email
-
-        token = NotImplemented
-
-    config_dict['token'] = token
+    # todo: test connection to the plex server
 
     # TODO: write config dict to $home/config.yml with a safe mode since it has credentials in it
-    yaml
+    config_path = os.path.join(home, 'config.yml')
+    with open(config_path) as f:
+        yaml.dump(config_dict, f, default_flow_style=True)
+
+    if with_example_db:
+        db_session.add(
+            db.MarkUnwatchedAnuallyAction(
+                name='Independence Day',
+                date=datetime.date(year=2016, month=6, day=30),  # a few days before July 1
+                section=db.DEFAULT_MOVIE_SECTION,
+                every_x_years=1,
+            )
+        )
+        db_session.add(
+            db.MarkUnwatchedAnuallyAction(
+                name='V for Vendetta',
+                date=datetime.date(year=2016, month=11, day=1),  # a few days before Nov 5
+                section=db.DEFAULT_MOVIE_SECTION,
+                every_x_years=2,
+            )
+        )
+        db_session.add(
+            db.MarkSeriesUnwatchedDailyAction(
+                name='Plebs',
+                date=datetime.date.today(),
+                section=db.DEFAULT_SHOW_SECTION,
+                every_x_days=7,
+            )
+        )
+    else:
+        raise NotImplementedError("TODO: prompt for movies and shows to watch")
+
+    db_session.commit()
 
 
 @cli.command()

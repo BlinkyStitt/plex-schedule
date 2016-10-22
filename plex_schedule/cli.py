@@ -4,6 +4,7 @@ import logging
 import os
 import pprint
 import sys
+import code
 
 from plexapi import myplex, server
 import click
@@ -48,16 +49,26 @@ def get_plex_server_with_token(plex_baseurl, plex_token):
     return server.PlexServer(plex_baseurl, plex_token)
 
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.option(
     "--home",
     default=lambda: os.environ.get('PLEX_SCHEDULE_HOME', os.path.expanduser('~/.plex_schedule')),
     type=click.Path(resolve_path=True),
 )
+@click.option(
+    "--verbose/--quiet",
+    default=None,
+)
 @click.pass_context
-def cli(ctx, home):
+def cli(ctx, home, verbose):
     # TODO: setup varying logger verbosity levels
-    logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+    if verbose is True:
+        log_level = logging.DEBUG
+    elif verbose is False:
+        log_level = logging.WARNING
+    else:
+        log_level = logging.INFO
+    logging.basicConfig(stream=sys.stderr, level=log_level)
 
     # make the third party loggers quieter
     logging.getLogger('plexapi').setLevel(100)  # disable this logger
@@ -85,6 +96,9 @@ def cli(ctx, home):
         bootstrap(ctx)
 
     # TODO: run database migraitons if necessary
+
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(run)
 
 
 def bootstrap(ctx):
@@ -164,9 +178,8 @@ def bootstrap(ctx):
 
 
 @cli.command()
-@click.option('--server')
 @click.pass_context
-def run(ctx, server):
+def run(ctx):
     # TODO: bootstrap
 
     # TODO: move most of this into smaller, testable functions instead of this monolith
@@ -212,7 +225,7 @@ def run(ctx, server):
             log.info("Still no actions to take. I guess you should go outside")
             return
 
-    log.info("Found %d action(s) to check!", len(actions))
+    log.info("Found %d action(s) to check", len(actions))
     log.debug("actions: %s", actions)
 
     # plex_account = get_plex_account(config_dict['plex_user'], config_dict['plex_pass'])
@@ -232,7 +245,7 @@ def run(ctx, server):
             db_session.rollback()
             ctx.fail("Something went wrong!")
         else:
-            log.info("Saving...")
+            log.debug("Saving...")
             db_session.commit()
 
     log.info("Completed %d/%d actions", actions_taken, len(actions))
@@ -242,21 +255,29 @@ def run(ctx, server):
 @click.option('--server', default=None)
 @click.pass_context
 def shell(ctx, server):
-    db_session = ctx.obj['db_session']
     home = ctx.obj['home']
+    schedule_db = ctx.obj['schedule_db']
+    db_session = ctx.obj['db_session']
 
     config_dict = get_config(home)
 
     plex_account = get_plex_account(config_dict['plex_user'], config_dict['plex_pass'])
 
-    plex_server = get_plex_server(plex_account, config_dict['plex_server'])
+    plex_server = get_plex_server_with_token(config_dict['plex_baseurl'], config_dict['plex_token'])
 
-    log.info(db_session)
-    log.info(home)
-    log.info(config_dict)
-    log.info(plex_server)
+    shell_vars = globals().copy()
+    shell_vars.update(locals())
 
-    raise NotImplementedError("TODO: Open an interactive shell with the server ready")
+    try:
+        import readline  # noqa
+    except ImportError:
+        log.info("install readline for up/down/history in the console")
+
+    log.info(pprint.pformat(shell_vars))
+
+    # TODO: bpython? ipython? some other shell with tab completion?
+    shell = code.InteractiveConsole(shell_vars)
+    shell.interact()
 
 
 if __name__ == '__main__':

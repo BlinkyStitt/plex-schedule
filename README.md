@@ -29,7 +29,7 @@ docker run -v plex_schedule_data:/data --rm -it bwstitt/plex_schedule
 
 3. Then add a similar (but non-interactive) command to your crontab:
 ```
-0 6 * * *   docker run -v plex_schedule_data:/data --rm bwstitt/plex_schedule
+0 6 * * *   docker run -v plex_schedule_data:/data --rm bwstitt/plex_schedule --quiet
 ```
 
 

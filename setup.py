@@ -14,7 +14,6 @@ setuptools.setup(
     },
     install_requires=[
         'click',
-        'ipdb',
         'plexapi',
         'sqlalchemy',
         'PyYAML',

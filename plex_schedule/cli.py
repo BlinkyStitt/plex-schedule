@@ -1,10 +1,11 @@
 import datetime
+import functools
 import logging
-import netrc
 import os
+import pprint
 import sys
 
-from plexapi import myplex
+from plexapi import myplex, server
 import click
 import yaml
 
@@ -12,6 +13,39 @@ from plex_schedule import db
 
 
 log = logging.getLogger(__name__)
+
+
+@functools.lru_cache()
+def get_config(home):
+    config_path = os.path.join(home, 'config.yml')
+    if not os.path.exists(config_path):
+        log.info("Config does not exist!")
+        return
+
+    log.info("Loading config from %s", config_path)
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
+def get_plex_account(plex_user, plex_pass):
+    log.info("Connecting to MyPlex as %s...", plex_user)
+    return myplex.MyPlexAccount.signin(plex_user, plex_pass)
+
+
+def get_plex_server(plex_account, plex_server_name):
+    log.info("Connecting to %s as %s...", plex_server_name, plex_account.username)
+
+    # TODO: can we make it check the local IPs first? the external IP always fails since this is local
+
+    plex_server = plex_account.resource(plex_server_name).connect()
+    log.debug("plex_server: %s", plex_server)
+
+    return plex_server
+
+
+def get_plex_server_with_token(plex_baseurl, plex_token):
+    log.info("Connecting to %s...", plex_baseurl)
+    return server.PlexServer(plex_baseurl, plex_token)
 
 
 @click.group()
@@ -47,22 +81,13 @@ def cli(ctx, home):
         home=home,
     )
 
+    if not os.path.exists(db_path):
+        bootstrap(ctx)
 
-@cli.command()
-@click.option('--plex-server', prompt=True)
-@click.option('--plex-username', prompt=True)
-@click.option('--with-example-db', is_flag=True, default=False)
-@click.password_option()
-@click.pass_context
-def bootstrap(
-    ctx,
-    password,
-    plex_server,
-    plex_username,
-    with_example_db,
-):
-    # TODO: alert if overwriting existing config/database
+    # TODO: run database migraitons if necessary
 
+
+def bootstrap(ctx):
     db_session = ctx.obj['db_session']
     home = ctx.obj['home']
     schedule_db = ctx.obj['schedule_db']
@@ -72,26 +97,40 @@ def bootstrap(
         log.info("Creating database: %s", schedule_db)
         db.Base.metadata.create_all(schedule_db)
 
-    config_dict = {
-        'plex_server': plex_server,
-        'plex_user': plex_username,
-    }
+    config_dict = {}
 
-    log.info("Connecting to MyPlex as %s...", plex_username)
-    account = myplex.MyPlexAccount.signin(plex_username, password)
-    log.debug("account.email: %s", account.email)
+    plex_user = click.prompt("Plex Username")
+    plex_pass = click.prompt("Plex Password", hide_input=True)
 
-    config_dict['plex_email'] = account.email
-    config_dict['token'] = account.authenticationToken
+    plex_account = get_plex_account(plex_user, plex_pass)
 
-    # todo: test connection to the plex server
+    log.debug("plex_account.email: %s", plex_account.email)
+
+    config_dict['plex_token'] = plex_account.authenticationToken
+
+    # enumerate the servers and prompt which one they want
+    # todo: enforce one of the valid resources is chosen
+    available_servers = ", ".join(set((r.name for r in plex_account.resources())))
+    config_dict['plex_server'] = click.prompt('Plex server (One of: %s)' % available_servers)
+
+    try:
+        plex_server = get_plex_server(plex_account, config_dict['plex_server'])
+    except Exception:
+        log.exception("Failed connecting to plex server")
+        raise ctx.fail("Failed connecting to plex server")
+
+    config_dict['plex_baseurl'] = plex_server.baseurl
 
     # TODO: write config dict to $home/config.yml with a safe mode since it has credentials in it
     config_path = os.path.join(home, 'config.yml')
-    with open(config_path) as f:
-        yaml.dump(config_dict, f, default_flow_style=True)
+    log.info("Saving config to %s", config_path)
+    log.debug("Config: %s", pprint.pformat(config_dict))
+    with open(config_path, 'wt') as f:
+        yaml.dump(config_dict, f, default_flow_style=False)
 
-    if with_example_db:
+    if click.confirm("Setup example database?", default=False):
+        log.info("Setting up example database...")
+
         db_session.add(
             db.MarkUnwatchedAnuallyAction(
                 name='Independence Day',
@@ -121,23 +160,26 @@ def bootstrap(
 
     db_session.commit()
 
+    log.info("Bootstrap complete")
+
 
 @cli.command()
 @click.option('--server')
 @click.pass_context
-def cron(ctx, server):
-    log.debug("hello, cron!")
+def run(ctx, server):
+    # TODO: bootstrap
 
-    db_session = ctx.obj
+    # TODO: move most of this into smaller, testable functions instead of this monolith
+
+    db_session = ctx.obj['db_session']
+    home = ctx.obj['home']
 
     # TODO: attempt to migrate the database
 
-    # TODO: do simple yaml config instead
-    netrc_key = 'plex_schedule'
-    if server:
-        # TODO: loop over all the servers if not server
-        netrc_key += '_' + server
-    user, _, password = netrc.netrc().authenticators(netrc_key)
+    # TODO: load the config in the main cli function if it exists and store it on ctx.obj
+    config_dict = get_config(home)
+    if not config_dict:
+        raise ctx.fail(msg="Config not found. Data directory corrupt")
 
     actions = []
 
@@ -170,21 +212,15 @@ def cron(ctx, server):
             log.info("Still no actions to take. I guess you should go outside")
             return
 
-    log.info("Found %d action(s) to process!", len(actions))
+    log.info("Found %d action(s) to check!", len(actions))
     log.debug("actions: %s", actions)
 
-    # TODO: use the token instead
-    log.info("Connecting to MyPlex as %s...", user)
-    account = myplex.MyPlexAccount.signin(user, password)
-    log.debug("account.email: %s", account.email)
-
-    log.info("Connecting to %s as %s...", server, account.username)
-    # TODO: can we check the local IPs first?
-    plex_server = account.resource(server).connect()
-    log.debug("plex_server: %s", plex_server)
+    # plex_account = get_plex_account(config_dict['plex_user'], config_dict['plex_pass'])
+    # plex_server = get_plex_server(plex_account, config_dict['plex_server'])
+    plex_server = get_plex_server_with_token(config_dict['plex_baseurl'], config_dict['plex_token'])
 
     # even though it is generally bad to commit in a loop, we call out to
-    # external apis and need some atomicity. we also aren't doing this at giant scale
+    # external apis so its safer. we also aren't doing this at giant scale
     actions_taken = 0
     for a in actions:
         try:
@@ -199,10 +235,6 @@ def cron(ctx, server):
             log.info("Saving...")
             db_session.commit()
 
-    # TODO: only do this if in debug mode
-    # log.info("interactive time!")
-    # import ipdb; ipdb.set_trace()  # noqa
-
     log.info("Completed %d/%d actions", actions_taken, len(actions))
 
 
@@ -210,18 +242,21 @@ def cron(ctx, server):
 @click.option('--server', default=None)
 @click.pass_context
 def shell(ctx, server):
-    plex_server = NotImplemented
+    db_session = ctx.obj['db_session']
+    home = ctx.obj['home']
 
+    config_dict = get_config(home)
+
+    plex_account = get_plex_account(config_dict['plex_user'], config_dict['plex_pass'])
+
+    plex_server = get_plex_server(plex_account, config_dict['plex_server'])
+
+    log.info(db_session)
+    log.info(home)
+    log.info(config_dict)
     log.info(plex_server)
-    raise NotImplemented("Open an interactive shell with the server ready")
 
-"""
-TODO:
-    select a series and offset it from today or from some arbitrary day
-    select a movie and mark it unwatched every year around a given date (independence day always a week before july 4)
-    mark any tv that aired or movie that released X years ago as unwatched if they weren't watched recently
-
-"""
+    raise NotImplementedError("TODO: Open an interactive shell with the server ready")
 
 
 if __name__ == '__main__':

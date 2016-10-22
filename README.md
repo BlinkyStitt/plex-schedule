@@ -13,7 +13,7 @@ I wrote this to fix a few problems:
 
 You tell this tool what movies you want to watch anually and what shows you want to have marked watched when you have less than a configurable number of hours (4 by default) of unwatched shows in plex.
 
-For example with movies, you might want to watch Independence Day every 4th of July or "Groundhog Day" every leap year.
+For example with movies, you might want to watch "Independence Day" every 4th of July.
 
 For example with shows, instead of marking an entire series unwatched, you tell this tool to add it to its schedule. It will then mark the first episode of the series unwatched. It will not mark the next episode in the series unwatched until you've watched that first epise and at least a configurable number of days (1 by default) has passed.
 
@@ -24,11 +24,13 @@ For example with shows, instead of marking an entire series unwatched, you tell 
 
 2. Run the following commands in your terminal:
 ```bash
-docker run -v plex_schedule_data:/data --rm -it bwstitt/plex_schedule bootstrap --with-example-db
-docker run -v plex_schedule_data:/data --rm bwstitt/plex_schedule cron
+docker run -v plex_schedule_data:/data --rm -it bwstitt/plex_schedule
 ```
 
-3. Then add that last cron command to your crontab
+3. Then add a similar (but non-interactive) command to your crontab:
+```
+0 6 * * *   docker run -v plex_schedule_data:/data --rm bwstitt/plex_schedule
+```
 
 
 # Developing
@@ -42,34 +44,39 @@ pip install -U -r requirements.txt -e .
 plex-schedule --help
 ```
 
-Upgrading requirements:
+Automatically upgrading requirements.txt:
 
 ```bash
 pip install pip-tools
 pip-compile requirements.in
-pip install -U -r requirements.txt -e .
 ```
 
 ## Developing with Docker
 
 ```bash
-docker build -t bwstitt/plex_schedule
+docker build -t bwstitt/plex_schedule .
 ```
 
 
 # Todo:
 
- - [ ] better name
- - [ ] how do dev requirements work with pip tools? and how should pip tools track its own version?
- - [ ] pip-sync instead of pip install?
- - [ ] Ctrl+C while plex is connecting breaks. i dont think their threading likes it
- - [ ] better log format for human readability
- - [ ] document using the Dockerfile
- - [ ] upgrade requirements by using pip-tools inside docker
- - [ ] command for setting up crontab
- - [ ] use pip-sync instead of pip install
- - [ ] make sure specials get sorted into a series by air date instead of being a special season at the end
- - [ ] how should multiple server support actually work? would it be better to just support easily moving from one server to another rather than updating multiple servers with one run? Probably since multiple runs can easily be setup with seperate configs
+ * [ ] better name
+ * [ ] how do dev requirements work with pip tools? and how should pip tools track its own version?
+ * [ ] pip-sync instead of pip install?
+ * [ ] Ctrl+C while plex is connecting breaks. i dont think their threading likes it
+ * [ ] better log format for human readability
+ * [ ] document using the Dockerfile
+ * [ ] upgrade requirements by using pip-tools inside docker
+ * [ ] command for setting up crontab
+ * [ ] use pip-sync instead of pip install
+ * [ ] make sure specials get sorted into a series by air date instead of being a special season at the end
+ * [ ] how should multiple server support actually work? would it be better to just support easily moving from one server to another rather than updating multiple servers with one run? Probably since multiple runs can easily be setup with seperate configs
+ * [ ] select a series and always make it available at a certain time instead of just the next day
+ * [ ] take a series as input and mark all the episodes as watched except the oldest unwatched one and then proceed from there
+ * [ ] push notification when shows are marked unwatched
+ * [ ] push notification when the last show of a season/series is marked unwatched
+ * [ ] integrate with sickbeard or an app like that
+ * [ ] if a show is added to plex, ahead of where we are watching in a series, mark it watched so we dont get ahead by accident. this is probable to happen if we are catching up with a show that is still on the air
 
 
 # Authors

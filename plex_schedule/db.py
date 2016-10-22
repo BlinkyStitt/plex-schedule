@@ -224,7 +224,7 @@ class MarkSeriesUnwatchedDailyAction(MarkUnwatchedAction):
 
         try:
             episode = episodes[episode_num]
-        except IndexError:
+        except (IndexError, TypeError):
             return False
 
         if self.episode_num == episode_num:

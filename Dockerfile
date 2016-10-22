@@ -35,10 +35,10 @@ USER plex_schedule
 WORKDIR /home/plex_schedule/src/plex_schedule
 RUN . ~/pyenv/bin/activate \
  && pip install --no-cache-dir -r requirements.txt -e . \
- && plex-schedule --help \
+ && plex-schedule --help
 
 # setup volume for the config and database
 VOLUME ["/data"]
 
 ENTRYPOINT ["/home/plex_schedule/pyenv/bin/plex-schedule"]
-CMD ["--help"]
+CMD ["run"]

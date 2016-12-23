@@ -1,5 +1,6 @@
 import datetime
 import logging
+import operator
 import os
 import pprint
 import sys
@@ -286,7 +287,7 @@ def shell(ctx, server):
 
 
 @cli.command()
-@click.option('-n', '--show-name', required=True, prompt=True)
+@click.option('-n', '--show-name', help='if none given, defaults to all unwatched shows')
 @click.option('-s', '--section', default='TV Shows')  # TODO: prompt this dynamically based on the server
 @click.option('-e', 'episode_num', '--episode', default=0)
 @click.option('start_time', '--start', default=None, type=int)
@@ -303,18 +304,43 @@ def create_playlist(ctx, episode_num, section, show_name, start_time, stop_time)
         config_dict['plex_token'],
     )
 
-    episodes = plex_server.library.section(section).get(show_name).episodes()
-    log.info("episodes: %s", episodes)
+    if show_name:
+        episodes = plex_server.library.section(section).get(show_name).episodes()
 
-    if episode_num:
-        episodes = [episodes[episode_num]]
+        if episode_num:
+            episodes = [episodes[episode_num]]
+    else:
+        # TODO: filtering by unwatched isn't working here :/
+        shows = plex_server.library.section(section).all()
 
+        episodes = []
+        for show in shows:
+            unwatched = show.unwatched()
+            if not unwatched:
+                continue
+
+            log.debug("unwatched %s: %s", unwatched[0].show().title, unwatched)
+
+            # TODO: instead of marking watched in plex, just limit us to one per show
+            for u in unwatched:
+                if u.originallyAvailableAt == '__NA__':
+                    u.originallyAvailableAt = u.addedAt
+
+            #episodes.extend(unwatched)
+            episodes.append(unwatched[0])
+
+        start_time = stop_time = 0
+
+    # TODO: fallback to index after fixing bug in plexapi
+    episodes.sort(key=operator.attrgetter("originallyAvailableAt"))
+
+    # TODO: is originallyAvailableAt the airdate?
     for episode in episodes:
         if start_time is None:
-            ep_start_time = click.prompt("start time (or 'next'):", default='0')
-            if ep_start_time == 'next':
+            # TODO: can we check if there is a current status already set?
+            ep_start_time = click.prompt("start time (negative to skip):", default=0)
+            if ep_start_time < 0:
                 continue
-            ep_start_time = int(ep_start_time)
         else:
             ep_start_time = start_time
 
@@ -323,11 +349,29 @@ def create_playlist(ctx, episode_num, section, show_name, start_time, stop_time)
         else:
             ep_stop_time = stop_time
 
+        # TODO: what happens if stop_time is longer than the duration?
+
         episode_url = episode.getStreamURL(offset=ep_start_time)
 
         if ep_stop_time:
             assert ep_stop_time > ep_start_time
+            assert ep_stop_time <= episode.duration
+
+            runtime = ep_stop_time - ep_start_time
+        else:
+            runtime = episode.duration - ep_start_time
+
+        print("#{runtime}, {show} - {index} {title} ({airdate})".format(
+            airdate=episode.originallyAvailableAt,
+            index=episode.index,
+            runtime=runtime,
+            show=episode.show().title,
+            title=episode.title,
+        ))
+
+        if ep_stop_time:
             print("#EXTVLCOPT:stop-time={}".format(ep_stop_time - ep_start_time))
+
         print(episode_url)
 
 

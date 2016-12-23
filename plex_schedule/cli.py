@@ -99,6 +99,8 @@ def cli(ctx, home, verbose):
 
     # TODO: run database migraitons if necessary
 
+    ctx.obj['config_dict'] = get_config(home)
+
     if ctx.invoked_subcommand is None:
         ctx.invoke(run)
 
@@ -128,7 +130,6 @@ def bootstrap(ctx):
         plex_server = get_plex_server(plex_account, config_dict['plex_server'])
     except Exception:
         log.exception("Failed connecting to plex server")
-        import ipdb; ipdb.set_trace()
         raise ctx.fail("Failed connecting to plex server")
 
     config_dict['plex_baseurl'] = plex_server.baseurl
@@ -261,8 +262,7 @@ def shell(ctx, server):
     home = ctx.obj['home']
     schedule_db = ctx.obj['schedule_db']
     db_session = ctx.obj['db_session']
-
-    config_dict = get_config(home)
+    config_dict = ctx.obj['config_dict']
 
     try:
         plex_account = get_plex_account(config_dict['plex_user'], config_dict['plex_pass'])
@@ -284,9 +284,51 @@ def shell(ctx, server):
 
     IPython.embed()
 
-    # TODO: bpython? ipython? some other shell with tab completion?
-    # shell = code.InteractiveConsole(shell_vars)
-    # shell.interact()
+
+@cli.command()
+@click.option('-n', '--show-name', required=True, prompt=True)
+@click.option('-s', '--section', default='TV Shows')  # TODO: prompt this dynamically based on the server
+@click.option('-e', 'episode_num', '--episode', default=0)
+@click.option('start_time', '--start', default=None, type=int)
+@click.option('stop_time', '--stop', default=None, type=int)
+@click.pass_context
+def create_playlist(ctx, episode_num, section, show_name, start_time, stop_time):
+    config_dict = ctx.obj['config_dict']
+
+    if stop_time:
+        assert stop_time > start_time
+
+    plex_server = get_plex_server_with_token(
+        config_dict['plex_baseurl'],
+        config_dict['plex_token'],
+    )
+
+    episodes = plex_server.library.section(section).get(show_name).episodes()
+    log.info("episodes: %s", episodes)
+
+    if episode_num:
+        episodes = [episodes[episode_num]]
+
+    for episode in episodes:
+        if start_time is None:
+            ep_start_time = click.prompt("start time (or 'next'):", default='0')
+            if ep_start_time == 'next':
+                continue
+            ep_start_time = int(ep_start_time)
+        else:
+            ep_start_time = start_time
+
+        if stop_time is None:
+            ep_stop_time = click.prompt("end time (or 0 for the whole episode):", default=0, type=int)
+        else:
+            ep_stop_time = stop_time
+
+        episode_url = episode.getStreamURL(offset=ep_start_time)
+
+        if ep_stop_time:
+            assert ep_stop_time > ep_start_time
+            print("#EXTVLCOPT:stop-time={}".format(ep_stop_time - ep_start_time))
+        print(episode_url)
 
 
 if __name__ == '__main__':

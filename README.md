@@ -77,6 +77,7 @@ docker build -t bwstitt/plex_schedule .
  * [ ] push notification when the last show of a season/series is marked unwatched
  * [ ] integrate with sickbeard or an app like that
  * [ ] if a show is added to plex, ahead of where we are watching in a series, mark it watched so we dont get ahead by accident. this is probable to happen if we are catching up with a show that is still on the air
+ * [ ] document handling credentials
 
 
 # Authors

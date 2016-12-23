@@ -1,13 +1,12 @@
 import datetime
-import functools
 import logging
 import os
 import pprint
 import sys
-import code
 
 from plexapi import myplex, server
 import click
+import IPython
 import yaml
 
 from plex_schedule import db
@@ -16,13 +15,13 @@ from plex_schedule import db
 log = logging.getLogger(__name__)
 
 
-@functools.lru_cache()
 def get_config(home):
     config_path = os.path.join(home, 'config.yml')
     if not os.path.exists(config_path):
-        log.info("Config does not exist!")
+        log.info("Config '%s' does not exist!", config_path)
         return
 
+    # todo: cache this?
     log.info("Loading config from %s", config_path)
     with open(config_path) as f:
         return yaml.safe_load(f)
@@ -68,6 +67,8 @@ def cli(ctx, home, verbose):
         log_level = logging.WARNING
     else:
         log_level = logging.INFO
+
+    # stdout is kept clean so we can do things like `plex-schedule foo >file_without_logs`
     logging.basicConfig(stream=sys.stderr, level=log_level)
 
     # make the third party loggers quieter
@@ -93,6 +94,7 @@ def cli(ctx, home, verbose):
     )
 
     if not os.path.exists(db_path):
+        # TODO: handle cleaning this up if it gets interrupted
         bootstrap(ctx)
 
     # TODO: run database migraitons if necessary
@@ -105,11 +107,6 @@ def bootstrap(ctx):
     db_session = ctx.obj['db_session']
     home = ctx.obj['home']
     schedule_db = ctx.obj['schedule_db']
-
-    db_path = os.path.join(home, 'plex_schedule.db')
-    if not os.path.exists(db_path):
-        log.info("Creating database: %s", schedule_db)
-        db.Base.metadata.create_all(schedule_db)
 
     config_dict = {}
 
@@ -131,6 +128,7 @@ def bootstrap(ctx):
         plex_server = get_plex_server(plex_account, config_dict['plex_server'])
     except Exception:
         log.exception("Failed connecting to plex server")
+        import ipdb; ipdb.set_trace()
         raise ctx.fail("Failed connecting to plex server")
 
     config_dict['plex_baseurl'] = plex_server.baseurl
@@ -141,6 +139,11 @@ def bootstrap(ctx):
     log.debug("Config: %s", pprint.pformat(config_dict))
     with open(config_path, 'wt') as f:
         yaml.dump(config_dict, f, default_flow_style=False)
+
+    db_path = os.path.join(home, 'plex_schedule.db')
+    if not os.path.exists(db_path):
+        log.info("Creating database: %s", schedule_db)
+        db.Base.metadata.create_all(schedule_db)
 
     if click.confirm("Setup example database?", default=False):
         log.info("Setting up example database...")
@@ -192,7 +195,7 @@ def run(ctx):
     # TODO: load the config in the main cli function if it exists and store it on ctx.obj
     config_dict = get_config(home)
     if not config_dict:
-        raise ctx.fail(msg="Config not found. Data directory corrupt")
+        raise ctx.fail("Config not found. Data directory corrupt")
 
     actions = []
 
@@ -261,13 +264,17 @@ def shell(ctx, server):
 
     config_dict = get_config(home)
 
-    plex_account = get_plex_account(config_dict['plex_user'], config_dict['plex_pass'])
+    try:
+        plex_account = get_plex_account(config_dict['plex_user'], config_dict['plex_pass'])
+    except KeyError:
+        pass
 
     plex_server = get_plex_server_with_token(config_dict['plex_baseurl'], config_dict['plex_token'])
 
     shell_vars = globals().copy()
     shell_vars.update(locals())
 
+    # todo: is importing readline like this needed with ipython?
     try:
         import readline  # noqa
     except ImportError:
@@ -275,9 +282,11 @@ def shell(ctx, server):
 
     log.info(pprint.pformat(shell_vars))
 
+    IPython.embed()
+
     # TODO: bpython? ipython? some other shell with tab completion?
-    shell = code.InteractiveConsole(shell_vars)
-    shell.interact()
+    # shell = code.InteractiveConsole(shell_vars)
+    # shell.interact()
 
 
 if __name__ == '__main__':

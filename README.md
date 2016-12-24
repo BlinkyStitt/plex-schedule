@@ -17,6 +17,20 @@ For example with movies, you might want to watch "Independence Day" every 4th of
 
 For example with shows, instead of marking an entire series unwatched, you tell this tool to add it to its schedule. It will then mark the first episode of the series unwatched. It will not mark the next episode in the series unwatched until you've watched that first epise and at least a configurable number of days (1 by default) has passed.
 
+# Rewrite
+
+Now I'm rewriting it. Instead of marking things watched that aren't really watched which seems prone to cause confusion, I'm having plex generate an m3u playlist file. It might be better to build the playlist inside of plex directly, but playlist support on iOS seems broken and these urls can be opened by VLC or even embeded in a webpage and viewed by Chrome (i couldn't get firefox to work)
+
+New endpoint: http://127.0.0.1:5000/plex.m3u8?show_name=Planet%20Earth%20II&only_unwatched=0&start_time=500&stop_time=505 will show 5 seconds of each planet earth. i plan on listing all the shows in the web app. then you can click one and add its episodes to a playlist. then you can cut pieces of episodes out or rearrange them in any order and have a dedicated .m3u8 link.
+
+it would be even better if the app could relay the call to plex so that we don't have to expose the token and so that we don't use the internal ip for stream urls when our customers might be outside. maybe we could do some port knocking or something so that VLC (or maybe icecast?) starts up and watches the m3u and broadcasts it. on disconnect, the stream should pause.
+
+it appears that watching things through the Stream url does not mark them watched. maybe do that in javascript?
+
+i think i should remove the tv show logic that marks things watched and go with dynamic playlists
+
+i want to include podcasts/audiobooks too
+
 
 # Quick Setup with Docker
 

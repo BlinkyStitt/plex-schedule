@@ -16,7 +16,10 @@ from plex_schedule import db
 log = logging.getLogger(__name__)
 
 
-def get_config(home):
+def get_config(home=None):
+    if not home:
+        home = get_home()
+
     config_path = os.path.join(home, 'config.yml')
     if not os.path.exists(config_path):
         log.info("Config '%s' does not exist!", config_path)
@@ -26,6 +29,10 @@ def get_config(home):
     log.info("Loading config from %s", config_path)
     with open(config_path) as f:
         return yaml.safe_load(f)
+
+
+def get_home():
+    return os.environ.get('PLEX_SCHEDULE_HOME', os.path.expanduser('~/.plex_schedule'))
 
 
 def get_plex_account(plex_user, plex_pass):
@@ -52,7 +59,7 @@ def get_plex_server_with_token(plex_baseurl, plex_token):
 @click.group(invoke_without_command=True)
 @click.option(
     "--home",
-    default=lambda: os.environ.get('PLEX_SCHEDULE_HOME', os.path.expanduser('~/.plex_schedule')),
+    default=get_home,
     type=click.Path(resolve_path=True),
 )
 @click.option(
@@ -286,53 +293,96 @@ def shell(ctx, server):
     IPython.embed()
 
 
-@cli.command()
+@cli.command('create_playlist')
+@click.option('-e', 'episode_num', '--episode', default=0)
+@click.option('-l', '--limit', default=None, type=int)
 @click.option('-n', '--show-name', help='if none given, defaults to all unwatched shows')
 @click.option('-s', '--section', default='TV Shows')  # TODO: prompt this dynamically based on the server
-@click.option('-e', 'episode_num', '--episode', default=0)
 @click.option('start_time', '--start', default=None, type=int)
 @click.option('stop_time', '--stop', default=None, type=int)
+@click.option('--only-unwatched', default=False, is_flag=True)
 @click.pass_context
-def create_playlist(ctx, episode_num, section, show_name, start_time, stop_time):
+def create_playlist_command(ctx, episode_num, limit, only_unwatched, section, show_name, start_time, stop_time):
     config_dict = ctx.obj['config_dict']
 
+    for line in create_playlist(
+        episode_num=episode_num,
+        limit=limit,
+        plex_baseurl=config_dict['plex_baseurl'],
+        plex_token=config_dict['plex_token'],
+        section=section,
+        show_name=show_name,
+        start_time=start_time,
+        stop_time=stop_time,
+        only_unwatched=only_unwatched
+    ):
+        click.echo(line)
+
+
+def create_playlist(
+    plex_baseurl,
+    plex_token,
+    section,
+    episode_num=None,
+    limit=None,
+    show_name=None,
+    start_time=None,
+    stop_time=None,
+    only_unwatched=True,
+):
     if stop_time:
         assert stop_time > start_time
 
-    plex_server = get_plex_server_with_token(
-        config_dict['plex_baseurl'],
-        config_dict['plex_token'],
-    )
+    plex_server = get_plex_server_with_token(plex_baseurl, plex_token)
 
+    # TODO: reduce copypasta here
     if show_name:
-        episodes = plex_server.library.section(section).get(show_name).episodes()
-
-        if episode_num:
-            episodes = [episodes[episode_num]]
+        show = plex_server.library.section(section).get(show_name)
+        if only_unwatched:
+            episodes = show.unwatched()
+        else:
+            episodes = show.episodes()
     else:
-        # TODO: filtering by unwatched isn't working here :/
+        # search is limited to 10 results
+        # shows = plex_server.library.section(section).search(unwatched=True)
+        # TODO: this should work, but plexapi doesn't seem to support it
+        # shows = plex_server.library.section(section).unwatched()
         shows = plex_server.library.section(section).all()
 
         episodes = []
         for show in shows:
-            unwatched = show.unwatched()
-            if not unwatched:
+            if only_unwatched:
+                show_eps = show.unwatched()
+            else:
+                show_eps = show.episodes()
+
+            if not show_eps:
                 continue
 
-            log.debug("unwatched %s: %s", unwatched[0].show().title, unwatched)
+            log.debug("episodes of %s: %s", show_eps[0].show().title, show_eps)
 
-            # TODO: instead of marking watched in plex, just limit us to one per show
-            for u in unwatched:
-                if u.originallyAvailableAt == '__NA__':
-                    u.originallyAvailableAt = u.addedAt
+            # instead of marking watched in plex, just limit us to one per show
+            episodes.append(show_eps[0])
 
-            #episodes.extend(unwatched)
-            episodes.append(unwatched[0])
+        start_time = start_time or 0
+        stop_time = stop_time or 0
 
-        start_time = stop_time = 0
+    print("start_time: %s", start_time)
+    print("stop_time: %s", stop_time)
+
+    if episode_num:
+        episodes = [episodes[episode_num]]
+
+    # fix sorting
+    for episode in episodes:
+        if episode.originallyAvailableAt == '__NA__':
+            episode.originallyAvailableAt = episode.addedAt
 
     # TODO: fallback to index after fixing bug in plexapi
     episodes.sort(key=operator.attrgetter("originallyAvailableAt"))
+
+    if limit:
+        episodes = episodes[:limit]
 
     # TODO: is originallyAvailableAt the airdate?
     for episode in episodes:
@@ -349,10 +399,6 @@ def create_playlist(ctx, episode_num, section, show_name, start_time, stop_time)
         else:
             ep_stop_time = stop_time
 
-        # TODO: what happens if stop_time is longer than the duration?
-
-        episode_url = episode.getStreamURL(offset=ep_start_time)
-
         if ep_stop_time:
             assert ep_stop_time > ep_start_time
             assert ep_stop_time <= episode.duration
@@ -361,18 +407,22 @@ def create_playlist(ctx, episode_num, section, show_name, start_time, stop_time)
         else:
             runtime = episode.duration - ep_start_time
 
-        print("#{runtime}, {show} - {index} {title} ({airdate})".format(
+        # better to use offset than "EXTVLCOPT:start-time"
+        episode_url = episode.getStreamURL(offset=ep_start_time)
+
+        yield "#{runtime}, {show} - {index} {title} ({airdate})".format(
             airdate=episode.originallyAvailableAt,
             index=episode.index,
             runtime=runtime,
             show=episode.show().title,
             title=episode.title,
-        ))
+        )
 
         if ep_stop_time:
-            print("#EXTVLCOPT:stop-time={}".format(ep_stop_time - ep_start_time))
+            # subtract the start time because we the start offset is in the stream url
+            yield "#EXTVLCOPT:stop-time={}".format(ep_stop_time - ep_start_time)
 
-        print(episode_url)
+        yield episode_url
 
 
 if __name__ == '__main__':

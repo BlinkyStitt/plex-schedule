@@ -1,5 +1,6 @@
 click
 ipython
+flask
 plexapi
 PyYAML
 sqlalchemy
